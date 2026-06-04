@@ -150,5 +150,5 @@ rewrite_push_once() {
   git -C "$dir" push --force --all  "https://github.com/$slug.git" >/dev/null 2>&1 || rc=$?
   git -C "$dir" push --force --tags "https://github.com/$slug.git" >/dev/null 2>&1 || true
   rm -rf "$dir"
-  [ $rc -eq 0 ] && echo "OK" || echo "PUSH_FAIL"
+  if [ $rc -eq 0 ]; then echo "OK"; else echo "PUSH_FAIL"; fi
 }

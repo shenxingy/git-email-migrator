@@ -28,7 +28,7 @@ cmd_sync() {
   local root repo
   for root in $roots; do
     for repo in "$root"/*; do
-      [ -d "$repo/.git" ] && [ ! -L "$repo" ] || continue
+      if [ ! -d "$repo/.git" ] || [ -L "$repo" ]; then continue; fi
       sync_repo "$repo" "$out"
     done
   done
