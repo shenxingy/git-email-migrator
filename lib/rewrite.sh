@@ -22,7 +22,8 @@ cmd_migrate() {
   local mailmap out targets
   mailmap=$(write_mailmap)
   out="$GEM_WORK/migrate.tsv"
-  echo -e "repo\tstatus\tcommits\trewritten_refs\tdetail" > "$out"
+  echo -e "repo\tstatus\tcommits\temail_hits\tdetail" > "$out"
+  printf '═══ migrate run ═══\n' > "$GEM_WORK/errors.log"
 
   targets=$(awk -F'\t' 'NR>1 && $4 ~ /^[0-9]+$/ && $4>0 {print $1}' "$audit")
   [ -n "$targets" ] || { log "✅ audit found nothing to migrate"; return 0; }
@@ -59,7 +60,7 @@ migrate_one() {
   log "════ $slug ════"
   rm -rf "$dir"
 
-  if ! git clone --bare --quiet "https://github.com/$slug.git" "$dir" 2>>"$GEM_WORK/errors.log"; then
+  if ! git clone --bare --quiet "$(repo_url "$slug")" "$dir" 2>>"$GEM_WORK/errors.log"; then
     echo -e "$slug\tCLONE_FAIL\t-\t-\tsee work/errors.log" >> "$out"; return
   fi
 
@@ -101,15 +102,20 @@ migrate_one() {
   fi
 
   # ─── Push ───
-  local push_out rc detail
-  push_out=$(git -C "$dir" push --force --all "https://github.com/$slug.git" 2>&1) ; rc=$?
-  git -C "$dir" push --force --tags "https://github.com/$slug.git" >/dev/null 2>&1 || true
+  local push_out rc tag_out tag_rc detail
+  push_out=$(git -C "$dir" push --force --all "$(repo_url "$slug")" 2>&1) ; rc=$?
+  tag_out=$(git -C "$dir" push --force --tags "$(repo_url "$slug")" 2>&1) ; tag_rc=$?
   if [ $rc -ne 0 ]; then
     echo "$push_out" >> "$GEM_WORK/errors.log"
     detail="push_rejected"
     grep -qi 'archived'  <<< "$push_out" && detail="ARCHIVED"
     grep -qi 'protected' <<< "$push_out" && detail="PROTECTED_BRANCH"
     echo -e "$slug\tPUSH_FAIL\t$pre_total\t$pre_bad\t$detail" >> "$out"
+    rm -rf "$dir"; return
+  fi
+  if [ $tag_rc -ne 0 ]; then
+    echo "$tag_out" >> "$GEM_WORK/errors.log"
+    echo -e "$slug\tTAG_PUSH_FAIL\t$pre_total\t$pre_bad\tbranches pushed, tags rejected — see work/errors.log" >> "$out"
     rm -rf "$dir"; return
   fi
 
@@ -123,15 +129,20 @@ cmd_restore() {
   require_tools
   local slug=${1:-}
   [ -n "$slug" ] || die "usage: ./migrate.sh restore <owner/repo>"
-  local bundle
-  bundle="$GEM_BACKUP/$(slug_to_name "$slug").bundle"
-  [ -f "$bundle" ] || die "no backup bundle for $slug at $bundle"
+  # migrate and unblock save bundles under different names — check both,
+  # preferring the migrate-time one (it predates any unblock retry).
+  local bundle name
+  name=$(slug_to_name "$slug")
+  for bundle in "$GEM_BACKUP/$name.bundle" "$GEM_BACKUP/unblock__$name.bundle"; do
+    [ -f "$bundle" ] && break
+  done
+  [ -f "$bundle" ] || die "no backup bundle for $slug under $GEM_BACKUP"
   [ "$DRY_RUN" = "1" ] && die "restore is a force-push — set DRY_RUN=0 to proceed"
   local dir="$GEM_WORK/restore.git"
   rm -rf "$dir"
   git clone --bare --quiet "$bundle" "$dir"
-  git -C "$dir" push --force --all  "https://github.com/$slug.git"
-  git -C "$dir" push --force --tags "https://github.com/$slug.git"
+  git -C "$dir" push --force --all  "$(repo_url "$slug")"
+  git -C "$dir" push --force --tags "$(repo_url "$slug")"
   rm -rf "$dir"
   log "restored $slug from $bundle"
 }

@@ -27,10 +27,13 @@ cmd_sync() {
 
   local root repo
   for root in $roots; do
-    for repo in "$root"/*; do
+    # dotglob: include hidden dirs (a clone named ".github" is a real case);
+    # nullglob: empty roots iterate zero times instead of a literal "*";
+    # subshell: sync_repo cd's into each repo — keep that out of this shell.
+    while IFS= read -r -d '' repo; do
       if [ ! -d "$repo/.git" ] || [ -L "$repo" ]; then continue; fi
-      sync_repo "$repo" "$out"
-    done
+      ( sync_repo "$repo" "$out" )
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
   done
 
   echo
@@ -49,6 +52,7 @@ sync_repo() {
 
   local cur br old new
   cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  [ "$cur" = "HEAD" ] && echo -e "$name\t(detached)\tWARN\tdetached HEAD not moved — checkout a branch and re-run" >> "$out"
 
   for br in $(git for-each-ref refs/heads --format='%(refname:short)'); do
     git rev-parse --verify --quiet "refs/remotes/origin/$br" >/dev/null \

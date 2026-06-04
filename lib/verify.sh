@@ -17,22 +17,31 @@ cmd_verify() {
   tr ' ' '\n' <<< "$OLD_EMAILS" | sed '/^$/d' > "$grep_file"
 
   log "re-enumerating repos for independent verification…"
-  local repos slug
+  local repos slug listed bad=0
   repos=$(list_repos)
-
-  local listed bad=0
-  listed=$(wc -l <<< "$repos")
-  log "verifying $listed repos…"
+  listed=$(printf '%s' "$repos" | grep -c . || true)
+  [ "$listed" -gt 0 ] || die "no repos found — check ORGS/ONLY_REPOS in config.env"
+  log "verifying $listed repos (mode: $SCAN_MODE)…"
+  [ "$SCAN_MODE" = "api" ] && warn "api mode verifies the default branch only — SCAN_MODE=clone checks every ref (branches + tags)"
 
   while read -r slug; do
-    local emails scanned hits
-    emails=$(gh api --paginate "repos/$slug/commits?per_page=100" \
-      --jq '.[].commit | .author.email, .committer.email' 2>/dev/null || true)
-    if [ -z "$emails" ]; then
-      echo -e "$slug\t0\tEMPTY_OR_NO_ACCESS" >> "$out"; continue
+    [ -n "$slug" ] || continue
+    local scanned hits
+    if [ "$SCAN_MODE" = "clone" ]; then
+      IFS=$'\t' read -r scanned hits <<< "$(deep_scan "$slug")"
+      if [ "$scanned" = "-1" ]; then
+        echo -e "$slug\t0\tEMPTY_OR_NO_ACCESS" >> "$out"; continue
+      fi
+    else
+      local emails
+      emails=$(gh api --paginate "repos/$slug/commits?per_page=100" \
+        --jq '.[].commit | .author.email, .committer.email' 2>/dev/null || true)
+      if [ -z "$emails" ]; then
+        echo -e "$slug\t0\tEMPTY_OR_NO_ACCESS" >> "$out"; continue
+      fi
+      scanned=$(( $(wc -l <<< "$emails") / 2 ))
+      hits=$(grep -cFx -f "$grep_file" <<< "$emails" || true)
     fi
-    scanned=$(( $(wc -l <<< "$emails") / 2 ))
-    hits=$(grep -cFx -f "$grep_file" <<< "$emails" || true)
     echo -e "$slug\t$scanned\t$hits" >> "$out"
     if [ "$hits" -gt 0 ]; then
       bad=$((bad + 1))

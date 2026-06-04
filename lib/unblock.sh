@@ -94,7 +94,12 @@ put_protection() {
   local slug=$1 branch=$2 snap=$3 force=$4
   jq --argjson force "$force" '{
       required_status_checks: (if .required_status_checks
-        then {strict: .required_status_checks.strict, contexts: (.required_status_checks.contexts // [])}
+        then {
+          strict: .required_status_checks.strict,
+          # modern app-scoped checks format; falls back to legacy contexts
+          checks: (.required_status_checks.checks
+                   // [(.required_status_checks.contexts // [])[] | {context: .}])
+        }
         else null end),
       enforce_admins: (.enforce_admins.enabled // false),
       required_pull_request_reviews: (if .required_pull_request_reviews
@@ -128,7 +133,7 @@ rewrite_push_once() {
   dir="$GEM_WORK/unblock__$name.git"
   rm -rf "$dir"
 
-  git clone --bare --quiet "https://github.com/$slug.git" "$dir" || { echo "CLONE_FAIL"; return; }
+  git clone --bare --quiet "$(repo_url "$slug")" "$dir" || { echo "CLONE_FAIL"; return; }
 
   local pre_total pre_tree
   pre_total=$(git -C "$dir" rev-list --all --count)
@@ -146,9 +151,11 @@ rewrite_push_once() {
     rm -rf "$dir"; echo "VALIDATE_FAIL"; return
   fi
 
-  local rc=0
-  git -C "$dir" push --force --all  "https://github.com/$slug.git" >/dev/null 2>&1 || rc=$?
-  git -C "$dir" push --force --tags "https://github.com/$slug.git" >/dev/null 2>&1 || true
+  local rc=0 tag_rc=0
+  git -C "$dir" push --force --all  "$(repo_url "$slug")" >/dev/null 2>&1 || rc=$?
+  git -C "$dir" push --force --tags "$(repo_url "$slug")" >/dev/null 2>&1 || tag_rc=$?
   rm -rf "$dir"
-  if [ $rc -eq 0 ]; then echo "OK"; else echo "PUSH_FAIL"; fi
+  if [ $rc -ne 0 ]; then echo "PUSH_FAIL"
+  elif [ $tag_rc -ne 0 ]; then echo "TAG_PUSH_FAIL"
+  else echo "OK"; fi
 }
