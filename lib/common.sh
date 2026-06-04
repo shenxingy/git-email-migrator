@@ -27,8 +27,14 @@ die()  { err "$*"; exit 1; }
 #           DRY_RUN (default 1 — nothing is pushed unless explicitly disabled)
 load_config() {
   [ -f "$GEM_CONFIG" ] || die "config not found: $GEM_CONFIG (copy config.example.env to config.env)"
+  # Environment beats config file for the two run-mode switches, so
+  # one-off invocations like `SCAN_MODE=clone ./migrate.sh verify` work
+  # even when config.env pins a value.
+  local _env_scan="${SCAN_MODE:-}" _env_dry="${DRY_RUN:-}"
   # shellcheck source=/dev/null
   source "$GEM_CONFIG"
+  [ -n "$_env_scan" ] && SCAN_MODE="$_env_scan"
+  [ -n "$_env_dry" ]  && DRY_RUN="$_env_dry"
   : "${OLD_EMAILS:?OLD_EMAILS is required (space-separated list)}"
   : "${NEW_EMAIL:?NEW_EMAIL is required}"
   DRY_RUN="${DRY_RUN:-1}"
