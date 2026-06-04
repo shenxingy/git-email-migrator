@@ -63,6 +63,15 @@ audit warns, verify hard-fails. If you see the warning, just re-run.
 rulesets API are reported as `MANUAL`: temporarily disable the ruleset in
 *Settings → Rules*, re-run `migrate`, re-enable.
 
+## Audit found 0 hits but you know the email is there
+
+`SCAN_MODE=api` (the default) reads the commits API, which covers the
+**default branch only** — old-email commits living exclusively on feature
+branches or tags are invisible to it. Re-run with `SCAN_MODE=clone` to
+bare-clone each repo and check every ref. Same applies to `verify`: api mode
+is a quick check, clone mode is the proof. (`migrate` itself always rewrites
+all refs — the scope question only affects which repos get *selected*.)
+
 ## `?author=` API filtering lies
 
 `GET /repos/{owner}/{repo}/commits?author=<email>` resolves the email to a

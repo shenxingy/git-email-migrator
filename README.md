@@ -98,13 +98,14 @@ $EDITOR config.env            # set OLD_EMAILS and NEW_EMAIL
 #    (Settings → Emails). Attribution follows verified emails.
 
 # 1. Find every repo carrying the old email
+#    (tip: set ONLY_REPOS="you/one-small-repo" for a trial run first)
 ./migrate.sh audit
 
 # 2. Dry run — rewrite + validate locally, push nothing
 ./migrate.sh migrate
 
-# 3. Review work/migrate.tsv, then go live
-sed -i 's/DRY_RUN=1/DRY_RUN=0/' config.env
+# 3. Review work/migrate.tsv, then go live:
+#    edit config.env → DRY_RUN=0, and re-run
 ./migrate.sh migrate
 
 # 4. Handle protected/archived repos, if any failed
@@ -113,8 +114,8 @@ sed -i 's/DRY_RUN=1/DRY_RUN=0/' config.env
 # 5. Repoint your local clones (uncommitted work survives)
 ./migrate.sh sync
 
-# 6. Prove it: independent zero-residue scan
-./migrate.sh verify
+# 6. Prove it: independent zero-residue scan across every ref
+SCAN_MODE=clone ./migrate.sh verify
 ```
 
 ## Commands
@@ -133,7 +134,7 @@ sed -i 's/DRY_RUN=1/DRY_RUN=0/' config.env
 1. **Tell collaborators** on shared repos to re-sync (their work is safe —
    trees are identical, only hashes changed):
    ```bash
-   git stash && git fetch origin && git reset --hard origin/main && git stash pop
+   git stash && git fetch origin && git reset --hard origin/HEAD && git stash pop
    ```
 2. **Other machines** of yours need the same treatment — or just run
    `./migrate.sh sync` there too.
