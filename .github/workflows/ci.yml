@@ -32,3 +32,14 @@ jobs:
       - name: refuses to run without config
         run: |
           if ./migrate.sh audit; then exit 1; fi
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install git-filter-repo
+        run: pip install git-filter-repo
+
+      - name: offline end-to-end test
+        run: ./tests/local-e2e.sh
